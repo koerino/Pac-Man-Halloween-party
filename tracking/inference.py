@@ -145,21 +145,16 @@ class ExactInference(InferenceModule):
         emissionModel = busters.getObservationDistribution(noisyDistance)
         pacmanPosition = gameState.getPacmanPosition()
 
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
-
-        # Replace this code with a correct observation update
-        # Be sure to handle the "jail" edge case where the ghost is eaten
-        # and noisyDistance is None
         allPossible = util.Counter()
-        for p in self.legalPositions:
-            trueDistance = util.manhattanDistance(p, pacmanPosition)
-            if emissionModel[trueDistance] > 0: allPossible[p] = 1.0
-
-        "*** END YOUR CODE HERE ***"
-
-        allPossible.normalize()
+        if noisyDistance == None:
+            allPossible[self.getJailPosition()] = 1.0
+        else:
+            for p in self.legalPositions:
+                trueDistance = util.manhattanDistance(p, pacmanPosition)
+                allPossible[p] = emissionModel[trueDistance] * self.beliefs[p]
+                
         self.beliefs = allPossible
+        allPossible.normalize()
 
     def elapseTime(self, gameState):
         """
@@ -210,8 +205,13 @@ class ExactInference(InferenceModule):
         combine to give us a belief distribution over new positions after a time update from a particular position
         """
 
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        allPossible = util.Counter()
+        for pos in self.legalPositions:
+            dis = self.getPositionDistribution(self.setGhostPosition(gameState, pos))
+            for newPos, p in dis.items():
+                allPossible[newPos] += self.beliefs[pos] * p
+        
+        self.beliefs = allPossible
 
     def getBeliefDistribution(self):
         return self.beliefs
@@ -247,8 +247,14 @@ class ParticleFilter(InferenceModule):
             dictionary (where there could be an associated weight with each position) is incorrect
             and will produce errors
         """
-        "*** YOUR CODE HERE ***"
-
+        self.particles = []
+        average = self.numParticles / len(self.legalPositions)
+        count = 0
+        while count < average:
+            for pos in self.legalPositions:
+                self.particles.append(pos)
+            count += 1
+            
     def observe(self, observation, gameState):
         """
         Update beliefs based on the given distance observation. Make
@@ -281,8 +287,18 @@ class ParticleFilter(InferenceModule):
         noisyDistance = observation
         emissionModel = busters.getObservationDistribution(noisyDistance)
         pacmanPosition = gameState.getPacmanPosition()
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        
+        if noisyDistance == None:
+            self.particles = [self.getJailPosition() for i in xrange(self.numParticles)]
+        else:
+            weights = util.Counter()
+            for p in self.particles:
+                weights[p] += emissionModel[util.manhattanDistance(pacmanPosition, p)]
+            if weights.totalCount() == 0:
+                self.initializeUniformly(gameState)
+            else:
+                self.particles = [util.sample(weights) for i in xrange(self.numParticles)]
+            
 
     def elapseTime(self, gameState):
         """
@@ -299,8 +315,11 @@ class ParticleFilter(InferenceModule):
         util.sample(Counter object) is a helper method to generate a sample from a
         belief distribution
         """
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        updated = []
+        for p in self.particles:
+            particlePos = self.getPositionDistribution(self.setGhostPosition(gameState, p))
+            updated.append(util.sample(particlePos))
+        self.particles = updated
 
     def getBeliefDistribution(self):
         """
@@ -308,8 +327,11 @@ class ParticleFilter(InferenceModule):
           ghost locations conditioned on all evidence and time passage. This method
           essentially converts a list of particles into a belief distribution (a Counter object)
         """
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        beliefs = util.Counter()
+        for p in self.particles:
+            beliefs[p] += 1
+        beliefs.normalize()
+        return beliefs
 
 class MarginalInference(InferenceModule):
     "A wrapper around the JointInference module that returns marginal beliefs about ghosts."
@@ -373,7 +395,9 @@ class JointParticleFilter:
             and will produce errors
 
         """
-        "*** YOUR CODE HERE ***"
+        self.particles = []
+        for i in xrange(self.numParticles):
+            self.particles.append(tuple([random.choice(self.legalPositions) for j in xrange(self.numGhosts)]))
 
     def addGhostAgent(self, agent):
         "Each ghost agent is registered separately and stored (in case they are different)."
@@ -479,7 +503,12 @@ class JointParticleFilter:
         self.particles = newParticles
 
     def getBeliefDistribution(self):
-        "*** YOUR CODE HERE ***"
+        beliefs = util.Counter()
+        for p in self.particles:
+            beliefs[p] += 1
+        beliefs.normalize()
+        return beliefs
+        
 
 # One JointInference module is shared globally across instances of MarginalInference
 jointInference = JointParticleFilter()
